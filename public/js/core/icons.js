@@ -6,7 +6,12 @@
  * 因此图标既能跟随主题/状态变色，又保持为真实的图片资源。
  */
 
-const ICON_BASE = '/assets/icons/';
+/**
+ * 图标基础路径。
+ * 用相对路径而非 '/assets/icons/'：站点部署在子路径（如 GitHub Pages 的
+ * /tanbaiju/）时，绝对路径会指向域名根目录，导致图标全部 404。
+ */
+const ICON_BASE = './assets/icons/';
 
 /**
  * 生成图标 DOM 节点。
