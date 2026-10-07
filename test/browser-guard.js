@@ -341,6 +341,55 @@ async function evaluatePages() {
   check('「我的」有导航宫格', navOk.count === 5, navOk.count + ' 个入口');
   check('宫格入口指向有效路由', !!navOk.href && navOk.href.indexOf('#/') === 0, navOk.href || '');
 
+  // 4. 登录页必须能打开 —— 曾因 href="/login" 绝对路径在子路径部署下 404
+  await cmd('Page.navigate', { url: BASE + '/#/login' });
+  await waitRendered();
+  const loginOk = await evalJs(`(function(){
+    var v = document.getElementById('view');
+    return {
+      len: v ? v.innerText.trim().length : 0,
+      text: v ? v.innerText.replace(/\\s+/g,' ').slice(0, 60) : ''
+    };
+  })()`);
+  check('登录页可打开（#/login）', loginOk.len > 10, loginOk.text);
+
+  // 默认是扫码面板；切到「手机号」通道应有输入控件。
+  // 静态部署下扫码无法跨设备确认，手机/账号通道才是可用路径。
+  const nickInput = await evalJs(`(function(){
+    var btns = Array.prototype.slice.call(document.querySelectorAll('#view button'));
+    var target = btns.filter(function(b){
+      var t = (b.textContent||'').trim();
+      return t === '手机号' || t === '账号';
+    })[0];
+    if (target) target.click();
+    return new Promise(function(res){
+      setTimeout(function(){
+        res({
+          clicked: !!target,
+          label: target ? target.textContent.trim() : '',
+          inputs: document.querySelectorAll('#view input').length
+        });
+      }, 700);
+    });
+  })()`);
+  check('登录页切换通道后有输入控件', nickInput.inputs > 0,
+    (nickInput.clicked ? '点击「' + nickInput.label + '」后 ' : '未找到切换按钮，') + nickInput.inputs + ' 个输入框');
+
+  // 5. 站内不得有指向绝对路径的可点链接（子路径部署必 404）
+  const badLinks = await evalJs(`(function(){
+    var bad = [];
+    var nodes = document.querySelectorAll('a[href]');
+    for (var i = 0; i < nodes.length; i++) {
+      var h = nodes[i].getAttribute('href') || '';
+      // 只抓会以域名根为起点的路径型链接
+      if (h.charAt(0) === '/' && h.indexOf('//') !== 0) {
+        bad.push(nodes[i].textContent.trim().slice(0,14) + ' -> ' + h);
+      }
+    }
+    return bad.slice(0, 8);
+  })()`);
+  check('站内无绝对路径死链', badLinks.length === 0, badLinks.join(' | ') || '全部为相对/hash 路径');
+
   // 截图留证
   try {
     const shot = await cmd('Page.captureScreenshot', { format: 'png' });

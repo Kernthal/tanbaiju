@@ -18,19 +18,33 @@
   const bm = document.getElementById('brandMark');
   if (bm) bm.appendChild(hicon('sparkle', 18));
 
-  // 登录页不套主框架
-  function isBare() {
-    return location.pathname === '/login';
+  /**
+   * 登录页走 hash 路由（#/login、#/ticket?t=xxx），不用独立 HTML 路径。
+   *
+   * 原因：站点部署在子路径（GitHub Pages 的 /tanbaiju/）时，
+   * 任何 '/login' 形式的绝对路径都会跳到域名根目录去，结果是 404。
+   * hash 路由不受路径深度影响，本地与线上行为一致。
+   */
+  function isLoginRoute() {
+    return (location.hash || '').indexOf('#/login') === 0 ||
+           (location.hash || '').indexOf('#/ticket') === 0;
   }
 
-  if (isBare()) {
-    document.querySelector('.app').remove();
-    document.querySelector('.tabbar').remove();
-    if (location.search.indexOf('t=') !== -1) {
-      viewTicket(document.getElementById('view'));
+  if (isLoginRoute()) {
+    // 只摘掉顶栏与底部 tabbar —— 不能删整个 .app，
+    // 因为 #view（页面挂载点）就在 .app 里面，删了就没有容器可渲染。
+    const topbar = document.querySelector('.topbar');
+    if (topbar) topbar.remove();
+    const tabbar = document.querySelector('.tabbar');
+    if (tabbar) tabbar.remove();
+
+    const host = document.getElementById('view');
+    if ((location.hash || '').indexOf('#/ticket') === 0) {
+      viewTicket(host);
     } else {
-      viewLogin(document.getElementById('view'));
+      viewLogin(host);
     }
+    store.afterLogin = store.afterLogin || 'home';
     return;
   }
 

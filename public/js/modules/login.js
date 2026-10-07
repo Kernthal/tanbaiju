@@ -28,7 +28,10 @@ window.viewLogin = async function viewLogin(host) {
   async function renderQr(box) {
     cleanup();
     const inner = q('div', { class: 'col gap-16 center', style: { alignItems: 'center' } });
-    box.innerHTML = '';
+    // 只清自己的内容，不能动 box：
+    // box 是整块面板，里面还有通道切换的按钮（扫码登录 / 手机号 / 账号），
+    // 清空会把它们一起抹掉，导致用户无法切换登录方式。
+    inner.innerHTML = '';
     box.appendChild(inner);
 
     inner.appendChild(q('div', { class: 't-2' }, '扫码登录'));
@@ -275,7 +278,7 @@ window.viewTicket = async function viewTicket(host) {
       q('div', { class: 'login-card col gap-16 center', style: { textAlign: 'center' } }, [
         q('div', { class: 't-2', text: '链接无效' }),
         q('div', { class: 't-sm c-3', text: '这个登录链接已经过期了，请回到电脑端重新生成二维码。' }),
-        q('a', { class: 'btn btn-primary', href: '/login', text: '前往登录页' }),
+        q('a', { class: 'btn btn-primary', href: '#/login', text: '前往登录页' }),
       ]),
     ]));
     return;
@@ -300,7 +303,8 @@ window.viewTicket = async function viewTicket(host) {
         q('button', {
           class: 'btn btn-primary btn-block',
           text: '打开坦白局',
-          onclick: () => { location.href = '/'; },
+          // 用相对路径跳回站点首页：子路径部署下 '/' 会跳到域名根目录
+          onclick: () => { location.href = './'; },
         }),
       ]);
     } else {

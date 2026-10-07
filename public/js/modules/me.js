@@ -11,7 +11,7 @@ window.viewMe = async function viewMe(host, params) {
       q('div', { class: 'login-card col gap-14' }, [
         q('div', { class: 't-2', style: { textAlign: 'center' }, text: '还没有登录' }),
         q('div', { class: 't-sm c-3', style: { textAlign: 'center' }, text: '登录后可以创建坦白局、查看自己的数据' }),
-        q('a', { class: 'btn btn-primary btn-block', href: '/login', text: '去登录' }),
+        q('a', { class: 'btn btn-primary btn-block', href: '#/login', text: '去登录' }),
       ]),
     ]));
     return;

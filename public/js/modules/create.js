@@ -10,7 +10,7 @@ window.viewCreate = async function viewCreate(host) {
       q('div', { class: 'login-card col gap-14' }, [
         q('div', { class: 't-2', style: { textAlign: 'center' }, text: '创建坦白局需要登录' }),
         q('div', { class: 't-sm c-3', style: { textAlign: 'center' }, text: '登录后就能创建属于你的坦白局' }),
-        q('a', { class: 'btn btn-primary btn-block', href: '/login', text: '去登录' }),
+        q('a', { class: 'btn btn-primary btn-block', href: '#/login', text: '去登录' }),
         q('a', { class: 'btn btn-ghost btn-block', href: '#/home', text: '先逛逛' }),
       ]),
     ]));

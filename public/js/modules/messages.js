@@ -9,7 +9,7 @@ window.viewMessages = async function viewMessages(host) {
     ui.render(host, q('div', { class: 'login-wrap' }, [
       q('div', { class: 'login-card col gap-14' }, [
         q('div', { class: 't-2', style: { textAlign: 'center' }, text: '登录后查看通知' }),
-        q('a', { class: 'btn btn-primary btn-block', href: '/login', text: '去登录' }),
+        q('a', { class: 'btn btn-primary btn-block', href: '#/login', text: '去登录' }),
       ]),
     ]));
     return;
