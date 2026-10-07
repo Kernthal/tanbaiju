@@ -1,0 +1,43 @@
+/* ============================================================
+   手绘图标系统
+   图标为独立 PNG（tools/make-icons.py 生成），用 CSS mask 着色，
+   颜色跟随 currentColor，可随主题与状态变化。
+   ============================================================ */
+
+.hicon {
+  display: inline-block;
+  flex-shrink: 0;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  vertical-align: -0.16em;
+  pointer-events: none;
+}
+
+button > .hicon { display: inline-flex; align-items: center; }
+
+/* 品牌徽标：不用文字，用手绘图形 */
+.brand-art { filter: none; }
+
+/* 状态色跟随 */
+.c-brand .hicon { color: var(--brand); }
+.c-danger .hicon { color: var(--danger); }
+.c-3 .hicon { color: var(--ink-3); }
+
+/* 品牌块：明黄只留这么一小块当作视觉锚点，扁平不投影 */
+.brand-block {
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: linear-gradient(135deg, var(--theme-yellow-a), var(--theme-yellow-b));
+  color: #17191c;
+  transition: transform var(--dur) var(--ease-out);
+}
+.brand:hover .brand-block { transform: rotate(-9deg) scale(1.06); }
+
+/* 主按钮内的图标保持白色 */
+.btn-primary .hicon { color: #fff; }

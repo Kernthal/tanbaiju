@@ -1,0 +1,61 @@
+name: Deploy to GitHub Pages
+
+# 推送到 main 即自动构建并发布，无需手动操作。
+# 保留手动触发入口，便于排查问题时随时重跑。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一分支只保留最新一次部署，避免发布顺序错乱。
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Prepare site
+        run: |
+          set -e
+          # 站点源码维护在 public/，发布根目录为 site/。
+          # 每次部署都以 public/ 为准重新生成 site/，避免两边内容漂移。
+          rm -rf site
+          mkdir -p site
+          cp -r public/. site/
+
+          # 告诉 Pages 不要跑 Jekyll（我们要原样静态文件）
+          touch site/.nojekyll
+
+          # SPA 深链兜底：应用内部用 hash 路由，刷新本不会 404，这一步是保险
+          test -f site/404.html || cp site/index.html site/404.html
+
+          echo "---- 发布内容 ----"
+          find site -maxdepth 2 -type f | sort | head -40
+          echo "文件总数: $(find site -type f | wc -l)"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

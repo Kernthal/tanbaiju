@@ -1,0 +1,284 @@
+/* ============================================================
+   坦白局 · 设计系统
+
+   质感取向：微信的克制 + QQ 的温度
+     · 微信 —— #EDEDED 浅灰底 / 纯白卡片 / 发丝级边框分层（不是重投影）
+               单一强色 #07C160，其余全部灰阶；三级文字 #191919 · #888888 · #B2B2B2
+               列表项「头像在左、文字在右」，一行 1px 分隔线，没有卡片边框感
+     · QQ   —— 分组容器 + 白内层的层次感；暖色只做徽标/等级的小面积点缀
+               tabbar 图标 + 文字，选中变主色；圆角克制（8–12px）
+   三套主题：浅色（默认）、深色、护眼
+   ============================================================ */
+
+:root {
+  /* ---------- 唯一强色 ---------- */
+  --brand: #07c160;
+  --brand-dark: #06ad56;
+  --brand-soft: #e8f7ef;
+  --brand-ink: #0a7a3f;
+
+  /* 暖色仅做小面积点缀：精选、等级、倒计时里的高亮 */
+  --accent: #ff9f43;
+  --danger: #fa5151;
+  --warn: #ff9760;
+  --info: #10aeff;
+
+  /* ---------- 中性色阶 ---------- */
+  --bg: #ededed;                /* 微信灰底 */
+  --surface: #ffffff;           /* 卡片纯白 */
+  --surface-2: #f6f6f7;         /* hover / 按压底色 */
+  --surface-3: #efeff1;         /* 中性填充（骨架、灰色徽标） */
+
+  --ink-1: #191919;             /* 主文字 */
+  --ink-2: #888888;             /* 次要文字 */
+  --ink-3: #b2b2b2;             /* 弱化 / 占位 */
+  --ink-4: #dcdcdc;             /* 分隔线 */
+
+  --line: #ececee;              /* 发丝线 */
+  --line-strong: #dedee1;       /* 边框加深态 */
+
+  /* 主题小色板：只用于头像背景 / hero 顶部细线 / 状态点，不铺满 */
+  --theme-yellow-a: #ffe066;
+  --theme-yellow-b: #fff3bf;
+  --theme-mint-a: #a8e6cf;
+  --theme-mint-b: #d8f3ec;
+  --theme-lilac-a: #c7b9ff;
+  --theme-lilac-b: #e6e1ff;
+  --theme-sky-a: #a6d8ff;
+  --theme-sky-b: #dcefff;
+  --theme-peach-a: #ffc4a3;
+  --theme-peach-b: #ffe6d6;
+
+  /* ---------- 圆角：只有头像 / 胶囊 / tabbar 用大圆角 ---------- */
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 12px;
+  --r-full: 999px;
+
+  /* ---------- 阴影：几乎不可见 + 发丝边框 ---------- */
+  --hair: 0 0 0 1px var(--line);
+  --sh-1: 0 0 0 1px var(--line);
+  --sh-2: 0 2px 10px rgba(0, 0, 0, .05), 0 0 0 1px var(--line-strong);
+  --sh-3: 0 14px 40px rgba(0, 0, 0, .12);
+  --sh-brand: 0 2px 8px rgba(7, 193, 96, .22);
+
+  /* ---------- 动效：克制，150–250ms，ease-out ---------- */
+  --ease: cubic-bezier(.25, .46, .45, .94);
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --dur: 200ms;
+  --dur-fast: 150ms;
+
+  --header-h: 52px;
+  --tabbar-h: 52px;
+  --maxw: 1080px;
+}
+
+[data-theme="dark"] {
+  --brand: #07c160;
+  --brand-dark: #06ad56;
+  --brand-soft: rgba(7, 193, 96, .16);
+  --brand-ink: #6ee7a8;
+
+  --bg: #191a1c;
+  --surface: #232427;
+  --surface-2: #2a2b2f;
+  --surface-3: #33343a;
+
+  --ink-1: #eaeaec;
+  --ink-2: #8b8b90;
+  --ink-3: #62626a;
+  --ink-4: #3a3b41;
+
+  --line: #2c2d31;
+  --line-strong: #3a3b41;
+
+  --sh-1: 0 0 0 1px var(--line);
+  --sh-2: 0 2px 10px rgba(0, 0, 0, .4), 0 0 0 1px var(--line-strong);
+  --sh-3: 0 14px 40px rgba(0, 0, 0, .55);
+  --sh-brand: 0 2px 10px rgba(7, 193, 96, .28);
+
+  --theme-yellow-a: #6b5a1f;
+  --theme-yellow-b: #4a3f18;
+  --theme-mint-a: #1f4d3d;
+  --theme-mint-b: #17382e;
+  --theme-lilac-a: #3b3260;
+  --theme-lilac-b: #2b2545;
+  --theme-sky-a: #23445e;
+  --theme-sky-b: #1a3243;
+  --theme-peach-a: #5c3a2a;
+  --theme-peach-b: #42291e;
+}
+
+[data-theme="eye"] {
+  --brand: #4a7c3f;
+  --brand-dark: #3d6634;
+  --brand-soft: rgba(74, 124, 63, .12);
+  --brand-ink: #35562d;
+
+  --bg: #e9e4d4;
+  --surface: #faf7ee;
+  --surface-2: #f2eee2;
+  --surface-3: #ebe5d5;
+
+  --ink-1: #332f26;
+  --ink-2: #7a7365;
+  --ink-3: #a89f8d;
+  --ink-4: #d3cbba;
+
+  --line: #e2dbc9;
+  --line-strong: #d2c9b4;
+
+  --sh-1: 0 0 0 1px var(--line);
+  --sh-2: 0 2px 10px rgba(90, 78, 55, .07), 0 0 0 1px var(--line-strong);
+  --sh-3: 0 14px 40px rgba(90, 78, 55, .16);
+  --sh-brand: 0 2px 8px rgba(74, 124, 63, .2);
+
+  --theme-yellow-a: #dcc98a;
+  --theme-yellow-b: #ece0bd;
+  --theme-mint-a: #a8c4a0;
+  --theme-mint-b: #d3e0cd;
+  --theme-lilac-a: #b5aec9;
+  --theme-lilac-b: #dad6e4;
+  --theme-sky-a: #a3bec9;
+  --theme-sky-b: #d2e0e5;
+  --theme-peach-a: #cba88f;
+  --theme-peach-b: #e6d2c4;
+}
+
+/* ---------- 基础 ---------- */
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body { margin: 0; padding: 0; height: 100%; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei",
+    "Helvetica Neue", "Source Han Sans SC", sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink-1);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+button, input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+button { cursor: pointer; border: none; background: none; padding: 0; }
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--ink-4);
+  border-radius: var(--r-full);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--ink-3); background-clip: padding-box; }
+
+::selection { background: var(--brand-soft); color: var(--brand-ink); }
+
+/* 数字用等宽，表格对齐不跳 */
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* ---------- 动画 ---------- */
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 进场只动 opacity + translate，把 transform 留给 hover/active，
+   否则 :active 的 scale 会被 animation-fill-mode 吃掉 */
+@keyframes riseIn {
+  from { opacity: 0; translate: 0 8px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+@keyframes popIn {
+  0% { opacity: 0; transform: scale(.9); }
+  60% { opacity: 1; transform: scale(1.02); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes sheetUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes ripple {
+  from { transform: scale(0); opacity: .35; }
+  to { transform: scale(2.4); opacity: 0; }
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@keyframes shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
+.shake { animation: shake 500ms var(--ease); }
+
+/* ---------- 通用原子类 ---------- */
+
+.row { display: flex; align-items: center; }
+.col { display: flex; flex-direction: column; }
+.gap-4 { gap: 4px; } .gap-6 { gap: 6px; } .gap-8 { gap: 8px; }
+.gap-10 { gap: 10px; } .gap-12 { gap: 12px; } .gap-16 { gap: 16px; } .gap-20 { gap: 20px; }
+.wrap { flex-wrap: wrap; }
+.between { justify-content: space-between; }
+.center { justify-content: center; }
+.end { justify-content: flex-end; }
+.items-start { align-items: flex-start; }
+.flex-1 { flex: 1; min-width: 0; }
+.grow { flex: 1; }
+.mt-4 { margin-top: 4px; } .mt-8 { margin-top: 8px; } .mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; } .mt-24 { margin-top: 24px; } .mt-32 { margin-top: 32px; }
+.mb-4 { margin-bottom: 4px; } .mb-8 { margin-bottom: 8px; } .mb-12 { margin-bottom: 12px; }
+.mb-16 { margin-bottom: 16px; } .mb-24 { margin-bottom: 24px; }
+.hidden { display: none !important; }
+.full { width: 100%; }
+.rel { position: relative; }
+
+.t-1 { font-size: 24px; font-weight: 700; letter-spacing: -.4px; line-height: 1.3; }
+.t-2 { font-size: 19px; font-weight: 650; letter-spacing: -.2px; line-height: 1.35; }
+.t-3 { font-size: 16px; font-weight: 600; }
+.t-body { font-size: 15px; }
+.t-sm { font-size: 13px; }
+.t-xs { font-size: 12px; }
+.c-2 { color: var(--ink-2); }
+.c-3 { color: var(--ink-3); }
+.c-brand { color: var(--brand); }
+.c-danger { color: var(--danger); }
+.c-warn { color: var(--warn); }
+.bold { font-weight: 650; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* ---------- 降级：用户要求减少动效时，所有过渡与位移全部关掉 ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
