@@ -16,16 +16,27 @@
  * 上层 api.js 只调用本模块暴露的方法，不关心底层是哪一种。
  */
 
+/**
+ * Supabase 项目配置。
+ *
+ * 用publishable key（sb_publishable_...）而不是旧的 anon JWT：
+ * 旧 anon key 已被 Supabase 停用，返回 401 Invalid API key；
+ * 新式 key 不是 JWT，只认apikey 请求头。
+ * 详见 https://supabase.com/docs/guides/api/api-keys
+ *
+ * 这个 key 设计上就是给浏览器用的（配合 RLS），可以公开。
+ * secret key 绝不能出现在这里 —— 它有BYPASSRLS 权限。
+ */
 const SB_URL = 'https://crscsipvlytlfjycnptn.supabase.co';
-const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNyc2NzaXB2bHl0bGZqeWNucHRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzNDU1MzIsImV4cCI6MjEwNjkyMTUzMn0.wHFWmnUoxAJYu-mNIwkxTu5tivC5qpxOLEsGA0mX6M';
+const SB_KEY = 'sb_publishable_-PdBrnFVvkAiDN7mA05TJg_j2BuJr5L';
 
 /* ============ 网络请求 ============ */
 
 async function sbFetch(path, options) {
   const opts = options || {};
   const headers = {
-    apikey: SB_ANON,
-    Authorization: 'Bearer ' + SB_ANON,
+    apikey: SB_KEY,
+    Authorization: 'Bearer ' + SB_KEY,
     'Content-Type': 'application/json',
   };
   if (opts.headers) Object.assign(headers, opts.headers);
@@ -39,10 +50,26 @@ async function sbFetch(path, options) {
   if (res.status === 204) return null;
   const text = await res.text();
   let json = null;
-  try { json = text ? JSON.parse(text) : null; } catch (_) { /* 非JSON */ }
+  try { json = text ? JSON.parse(text) : null; } catch (_) { /* 非 JSON */ }
+
   if (!res.ok) {
-    const msg = (json && (json.message || json.error || json.hint)) || ('HTTP ' + res.status);
-    throw new Error(msg);
+    const raw = (json && (json.message || json.error)) || ('HTTP ' + res.status);
+    // 把 PostgREST 的原始报错翻译成用户看得懂的话。
+    // 直接把 "Could not find the 'password' column of 'users'" 弹给用户毫无意义。
+    let msg = raw;
+    if (/Could not find the '(\w+)' column/.test(raw)) {
+      const col = /Could not find the '(\w+)' column/.exec(raw)[1];
+      msg = '数据库缺少 ' + col + ' 字段，请先执行 supabase/ 下的建表脚本';
+    } else if (/schema cache/i.test(raw)) {
+      msg = '数据库表尚未就绪，请稍后重试';
+    } else if (/Invalid API key/i.test(raw)) {
+      msg = '数据库密钥无效，请检查配置';
+    } else if (/Failed to fetch|NetworkError/i.test(raw)) {
+      msg = '连不上数据库，请检查网络';
+    }
+    const err = new Error(msg);
+    err.raw = raw;
+    throw err;
   }
   return json;
 }
@@ -68,7 +95,12 @@ async function resolveBackend() {
   if (state.backend && Date.now() - state.probedAt < 30000) return state.backend;
 
   // 先看本地服务端是否在跑（开发时用）。
-  // 只要能拿到 JSON 应答就算通 —— 未登录(401)也是服务端正常的应答。
+  // 判定标准：必须拿到「像 API 的应答」——
+  //   ·2xx 且能解析出 JSON  -> 是我们的服务端
+  //   ·401 未登录也是应答     -> 服务端在，只是要登录
+  //   ·404 不是              -> 纯静态托管，没有后端
+  // 早先这里写的是 `status < 600`就算可用，结果静态托管返回 404
+  // 也被判成「有后端」，于是永远不去连 Supabase。
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 1500);
@@ -82,18 +114,22 @@ async function resolveBackend() {
     } finally {
       clearTimeout(timer);
     }
-    if (res && res.ok) {
-      state.backend = 'server';
-      state.probedAt = Date.now();
-      return 'server';
+
+    if (res) {
+      // 静态托管/纯文件服务器：404/405 之类，说明没有 API
+      if (res.status === 404 || res.status === 405 || res.status === 501) {
+        // 明确没有后端，继续往下试 Supabase
+      } else {
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.indexOf('json') !== -1) {
+          state.backend = 'server';
+          state.probedAt = Date.now();
+          return 'server';
+        }
+        // 有应答但不是 JSON（比如返回了 HTML），也不算后端
+      }
     }
-    // 拿到了应答但不是 2xx，说明服务端在、只是这个接口有问题，仍算可用
-    if (res && res.status < 600) {
-      state.backend = 'server';
-      state.probedAt = Date.now();
-      return 'server';
-    }
-  } catch (_) { /* 没有后端，继续 */ }
+  } catch (_) { /* 网络不通，继续 */ }
 
   // 再试 Supabase。
   // 必须用真实的 anon key 发一次请求来判断可达性：
@@ -360,7 +396,190 @@ on('POST', '/api/auth/guest', async () => {
   return { token: identity, user: user };
 });
 
+
+/* ---- 扫码登录 ----
+   票据存在 meta 表里（Supabase 没有内存态可用）。
+   真实跨设备扫码确认需要应用自己校验二维码内容并调用 bind，
+   这里提供完整的票据生命周期，前端逻辑与 local 模式一致。 */
+
+on('POST', '/api/auth/qr/ticket', async () => {
+  const ticket = 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const expiresAt = Date.now() + 30 * 60 * 1000;
+  await insertRow('meta', {
+    id: 'ticket:' + ticket,
+    kind: 'ticket',
+    status: 'waiting',
+    nickname: null,
+    createdAt: Date.now(),
+    expiresAt: expiresAt,
+  });
+  return {
+    ticket: ticket,
+    expiresAt: expiresAt,
+    url: location.origin + location.pathname + '#/ticket?t=' + ticket,
+  };
+});
+
+on('GET', '/api/auth/qr/poll', async (params, body, query) => {
+  const rows = await selectAll('meta', 'id=eq.' + encodeURIComponent('ticket:' + String(query.t || '')));
+  const row = rows[0];
+  if (!row) return { status: 'invalid' };
+  if (row.expiresAt && Date.now() > row.expiresAt) {
+    await patchRow('meta', row.id, { status: 'expired' });
+    return { status: 'expired' };
+  }
+  if (row.status === 'confirmed') return { status: 'confirmed', nickname: row.nickname || '扫码进来的你' };
+  return { status: row.status || 'waiting' };
+});
+
+on('POST', '/api/auth/qr/confirm', async (params, body) => {
+  const key = 'ticket:' + String(body.ticket || '');
+  const rows = await selectAll('meta', 'id=eq.' + encodeURIComponent(key));
+  if (!rows[0]) throw new Error('票据不存在或已失效');
+  await patchRow('meta', key, { status: 'confirmed' });
+  return { status: 'confirmed' };
+});
+
+/** 手机扫一扫打开票据页后调用：把身份绑定到当前浏览器 */
+on('POST', '/api/auth/qr/bind', async (params, body) => {
+  const key = 'ticket:' + String(body.ticket || '');
+  const rows = await selectAll('meta', 'id=eq.' + encodeURIComponent(key));
+  const row = rows[0];
+  if (!row) throw new Error('票据不存在或已失效');
+  if (row.expiresAt && Date.now() > row.expiresAt) throw new Error('票据已过期，请刷新二维码');
+
+  const nickname = String(body.nickname || '').trim() || '扫码进来的你';
+  const identity = 'scan:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  const created = await insertRow('users', rowForNewUser(nickname, identity));
+  const user = publicUser(created);
+  cacheMe(user);
+  await patchRow('meta', key, { status: 'confirmed', nickname: nickname, boundIdentity: identity });
+  return { token: identity, user: user };
+});
+
+/* ---- 手机验证码 ---- */
+
+/** 演示环境固定验证码；接真实短信只需替换这里与下方 login 的校验 */
+const DEMO_SMS_CODE = '8888';
+
+on('POST', '/api/auth/phone/code', async (params, body) => {
+  const phone = String(body.phone || '').trim();
+  if (!/^1[3-9]\d{9}$/.test(phone)) throw new Error('请输入 11 位手机号');
+  const key = 'sms:' + phone;
+  const existing = await selectAll('meta', 'id=eq.' + encodeURIComponent(key));
+  if (existing.length) {
+    await patchRow('meta', key, { code: DEMO_SMS_CODE, sentAt: Date.now(), tries: 0 });
+  } else {
+    await insertRow('meta', {
+      id: key, kind: 'sms', code: DEMO_SMS_CODE,
+      sentAt: Date.now(), tries: 0, createdAt: Date.now(),
+    });
+  }
+  return { sent: true, demo: true, code: DEMO_SMS_CODE };
+});
+
+on('POST', '/api/auth/phone/login', async (params, body) => {
+  const phone = String(body.phone || '').trim();
+  const code = String(body.code || '').trim();
+  if (!/^1[3-9]\d{9}$/.test(phone)) throw new Error('请输入 11 位手机号');
+
+  const key = 'sms:' + phone;
+  const rows = await selectAll('meta', 'id=eq.' + encodeURIComponent(key));
+  const row = rows[0];
+  if (!row) throw new Error('验证码不正确');
+  if (String(row.code) !== code) {
+    await patchRow('meta', key, { tries: (row.tries || 0) + 1 });
+    throw new Error('验证码不正确');
+  }
+
+  const identity = 'phone:' + phone;
+  let found = await selectAll('users', 'identity=eq.' + encodeURIComponent(identity));
+  let user;
+  if (found.length) {
+    user = found[0];
+  } else {
+    user = await insertRow('users', rowForNewUser('手机用户' + phone.slice(-4), identity));
+  }
+  const pub = publicUser(user);
+  cacheMe(pub);
+  return { token: identity, user: pub };
+});
+
+/* ---- 账号密码 ---- */
+
+/**
+ * 密码哈希。
+ * 纯前端没有服务端 salt，安全性有限 —— 但足以避免明文存密码。
+ * 真正的安全性依赖 RLS；若需要强认证，应接入 Supabase Auth。
+ */
+function hashPw(pw, salt) {
+  const combo = (salt || 'tb') + '::' + String(pw);
+  let h = 5381;
+  for (let i = 0; i < combo.length; i++) h = ((h << 5) + h + combo.charCodeAt(i)) >>> 0;
+  return String(h);
+}
+
+on('POST', '/api/auth/register', async (params, body) => {
+  const username = String(body.username || '').trim();
+  const password = String(body.password || '');
+  const nickname = String(body.nickname || '').trim();
+
+  if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) throw new Error('用户名需 3-20 位字母数字下划线');
+  if (password.length < 6) throw new Error('密码至少 6 位');
+  if (!nickname) throw new Error('请填一个昵称');
+
+  const identity = 'acct:' + username;
+  const exists = await selectAll('users', 'identity=eq.' + encodeURIComponent(identity));
+  if (exists.length) throw new Error('该用户名已被注册');
+
+  const row = rowForNewUser(nickname, identity);
+  row.password = hashPw(password, username);
+  const created = await insertRow('users', row);
+  const user = publicUser(created);
+  cacheMe(user);
+  return { token: identity, user: user };
+});
+
+on('POST', '/api/auth/login', async (params, body) => {
+  const username = String(body.username || '').trim();
+  const password = String(body.password || '');
+  const identity = 'acct:' + username;
+  const found = await selectAll('users', 'identity=eq.' + encodeURIComponent(identity));
+  const user = found[0];
+  if (!user || !user.password) throw new Error('用户名或密码不正确');
+  if (user.password !== hashPw(password, username)) throw new Error('用户名或密码不正确');
+  const pub = publicUser(user);
+  cacheMe(pub);
+  return { token: identity, user: pub };
+});
+
+/* ---- 票据/验证码容器 ---- */
+on('DELETE', '/api/auth/ticket', async (params, body) => {
+  await deleteRow('meta', 'ticket:' + String(body.ticket || ''));
+  return { done: true };
+});
+
 on('GET', '/api/auth/me', async () => currentUser());
+
+/**
+ * 清除「本机」的数据。
+ * 注意：静态部署下无法删除别人的数据（也不该删），
+ * 所以只清理当前浏览器这一侧能定位到的记录：会话票据 + 当前用户的痕迹。
+ * 真正的全站清空需要在受信任的服务端做。
+ */
+on('POST', '/api/data/reset', async () => {
+  try {
+    const me = await currentUser();
+    // 清掉自己的草稿、收藏、屏蔽
+    await sbFetch('drafts?identity=eq.' + encodeURIComponent(me.identity), { method: 'DELETE' });
+    await sbFetch('favorites?identity=eq.' + encodeURIComponent(me.identity), { method: 'DELETE' });
+    await sbFetch('blocks?from_identity=eq.' + encodeURIComponent(me.identity), { method: 'DELETE' });
+    cacheMe(null);
+  } catch (_) {
+    // 离线或表不存在时静默处理，用户仍可继续使用
+  }
+  return { done: true, scope: 'device' };
+});
 
 on('PATCH', '/api/auth/profile', async (params, body) => {
   const me = await currentUser();

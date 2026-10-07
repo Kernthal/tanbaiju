@@ -7,6 +7,8 @@ const { spawn } = require('child_process');
 const fs = require('fs'), os = require('os'), path = require('path'), http = require('http');
 
 const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
+// 允许用环境变量指向别处（例如 tools/static-server.js 起的静态环境）
+const BASE = process.env.BASE || 'http://127.0.0.1:8848';
 
 function get(u) {
   return new Promise((res, rej) => {
@@ -118,7 +120,7 @@ class WS {
 
   await cmd('Runtime.enable');
   await cmd('Page.enable');
-  await cmd('Page.navigate', { url: 'http://127.0.0.1:8848/#/home' });
+  await cmd('Page.navigate', { url: BASE + '/#/home' });
   await new Promise((r) => setTimeout(r, 5000));
 
   console.log('=== 数据层逐个接口实测 ===\n');
