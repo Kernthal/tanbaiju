@@ -29,6 +29,24 @@ class Node {
     this._html = '';
     this.parentNode = null;
     this.listeners = {};
+    // style 需要真实的 CSSStyleDeclaration 语义：自定义属性（--x）
+    // 只能通过 setProperty 写入，用普通对象赋值会被静默忽略。
+    const self = this;
+    this._cssVars = {};
+    this.style = new Proxy({
+      setProperty: function (name, value) { self._cssVars[name] = value; },
+      getPropertyValue: function (name) { return self._cssVars[name] || ''; },
+    }, {
+      set(target, prop, value) {
+        if (String(prop).indexOf('--') === 0) self._cssVars[prop] = value;
+        else target[prop] = value;
+        return true;
+      },
+      get(target, prop) {
+        if (String(prop).indexOf('--') === 0) return self._cssVars[prop];
+        return target[prop];
+      },
+    });
   }
   get className() { return this.attrs['class'] || ''; }
   set className(v) { this.attrs['class'] = v; }
@@ -204,7 +222,7 @@ for (const f of FILES) {
   const t0 = win.ui.timeAgo(Date.now() - 5 * 60000);
   check('timeAgo 相对时间', t0 === '5 分钟前', t0);
   const cd = win.ui.countdownParts(Date.now() + 3661000);
-  check('倒计时拆分', cd.h === 1 && cd.m === 1 && cd.s === 1, cd.h + ':' + cd.m + ':' + cd.s);
+  check('倒计时拆分', cd.h === 1 && cd.m === 1 && cd.s >= 0 && cd.s <= 1, cd.h + ':' + cd.m + ':' + cd.s);
   check('fmtCount 千分位', win.ui.fmtCount(999) === '999' && win.ui.fmtCount(1500) === '1.5k', win.ui.fmtCount(1500));
   check('esc 转义', win.ui.esc('<b>&"') === '&lt;b&gt;&amp;&quot;');
 

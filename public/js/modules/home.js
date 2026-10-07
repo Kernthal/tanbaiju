@@ -21,14 +21,11 @@ window.viewHome = async function viewHome(host, params) {
   ]));
 
   function banner() {
-    return q('div', {
-      class: 'room-hero',
-      style: { padding: '24px 22px' },
-    }, [
-      q('div', { class: 'row between items-start gap-16 wrap' }, [
-        q('div', { class: 'col gap-8 flex-1', style: { minWidth: '240px' } }, [
-          q('div', { style: { fontSize: '23px', fontWeight: '800', letterSpacing: '-.5px', color: '#17191c' }, text: '今天一人问一个问题' }),
-          q('div', { style: { fontSize: '14px', color: '#4a4f55', fontWeight: '550' }, text: '别人不敢问的，TA 会如实回答' }),
+    return q('div', { class: 'home-banner' }, [
+      q('div', { class: 'row between items-center gap-16 wrap' }, [
+        q('div', { class: 'col gap-4 flex-1', style: { minWidth: '240px' } }, [
+          q('div', { class: 'home-banner-title', text: '今天一人问一个问题' }),
+          q('div', { class: 'home-banner-sub', text: '别人不敢问的，TA 会如实回答' }),
         ]),
         q('button', {
           class: 'btn btn-primary',
@@ -42,15 +39,24 @@ window.viewHome = async function viewHome(host, params) {
   async function loadRooms() {
     try {
       const d = await api.rooms(tag);
-      ui.render(listHost, d.list.length
-        ? d.list.map(roomCard)
-        : q('div', { class: 'card card-pad-lg', style: { gridColumn: '1/-1' } }, [
-            q('div', { class: 'empty' }, [
-              q('div', { class: 'empty-art', text: '?' }),
-              q('div', { text: tag ? '这个标签下还没有坦白局' : '还没有人创建坦白局' }),
-              q('button', { class: 'btn btn-primary btn-sm mt-8', text: '创建第一个', onclick: () => router.navigate('/create') }),
-            ]),
-          ]));
+      if (!d.list.length) {
+        // 空态要说清「这是什么」+「怎么开始」，并给一个直接的下一步
+        ui.render(listHost, q('div', { class: 'card card-pad-lg', style: { gridColumn: '1/-1' } }, [
+          q('div', { class: 'empty' }, [
+            q('div', { class: 'empty-art' }, [icon('sparkle', 28)]),
+            q('div', { class: 't-3 empty-title', text: tag ? ('#' + tag + ' 下还没有坦白局') : '还没有人发起坦白局' }),
+            q('div', { class: 't-sm c-3', style: { maxWidth: '300px', lineHeight: '1.8' },
+              text: tag ? '换个标签看看，或者自己发起一场' : '发起一场坦白局，把想问的话攒起来，TA 会一条条如实回答' }),
+            q('button', {
+              class: 'btn btn-primary',
+              text: '发起第一场坦白局',
+              onclick: () => router.navigate('/create'),
+            }),
+          ]),
+        ]));
+        return;
+      }
+      ui.render(listHost, d.list.map(roomCard));
     } catch (err) {
       ui.toast(err.message, 'err');
     }
@@ -169,6 +175,19 @@ window.viewHome = async function viewHome(host, params) {
         ]));
       }
 
+      // 发起引导：侧栏末尾这张卡既填满留白，也给新用户一个明确的下一步
+      nodes.push(q('div', { class: 'card card-pad side-cta' }, [
+        q('div', { class: 'side-cta-art' }, [icon('sparkle', 20)]),
+        q('div', { class: 't-3', text: '有些话想问谁？' }),
+        q('div', { class: 't-xs c-3', style: { lineHeight: '1.8' },
+          text: '发起一场坦白局，把攒了很久的问题一次问出来。对方只能如实回答。' }),
+        q('button', {
+          class: 'btn btn-primary btn-block',
+          text: '发起我的坦白局',
+          onclick: () => router.navigate('/create'),
+        }),
+      ]));
+
       ui.render(sideHost, nodes);
     } catch (err) {
       ui.render(sideHost, q('div', { class: 'card card-pad t-sm c-3', text: '数据加载失败' }));
@@ -189,20 +208,47 @@ window.viewHome = async function viewHome(host, params) {
     svg.setAttribute('preserveAspectRatio', 'none');
     svg.style.height = '84px';
 
+    // 基线：空数据时也能看出「这里是一条时间轴」而不是渲染坏了
+    const base = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    base.setAttribute('x', '0');
+    base.setAttribute('y', String(H - 0.4));
+    base.setAttribute('width', String(W));
+    base.setAttribute('height', '0.4');
+    base.setAttribute('fill', 'var(--line)');
+    base.setAttribute('rx', '0.2');
+    svg.appendChild(base);
+
     buckets.forEach((b, i) => {
-      const h = Math.max(1.5, (b.posts / max) * H);
-      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      rect.setAttribute('x', String(i * (bw + gap)));
-      rect.setAttribute('y', String(H - h));
-      rect.setAttribute('width', String(bw));
-      rect.setAttribute('height', String(h));
-      rect.setAttribute('rx', '0.8');
-      rect.setAttribute('fill', b.posts > 0 ? 'var(--brand)' : 'var(--line)');
-      rect.setAttribute('class', 'chart-bar');
-      const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
-      title.textContent = b.hour + ' 时 · ' + b.posts + ' 条内容';
-      rect.appendChild(title);
-      svg.appendChild(rect);
+      const x = i * (bw + gap);
+      // 有数据才画柱：之前用 Math.max(1.5, ...) 给空桶也画了 1.5px，
+      // 结果 23 个空桶连成一条像虚线的横杠，看着像图表坏了。
+      if (b.posts > 0) {
+        const h = Math.max(2, (b.posts / max) * H);
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', String(x));
+        rect.setAttribute('y', String(H - h));
+        rect.setAttribute('width', String(bw));
+        rect.setAttribute('height', String(h));
+        rect.setAttribute('rx', '0.8');
+        rect.setAttribute('fill', 'var(--brand)');
+        rect.setAttribute('class', 'chart-bar');
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        title.textContent = b.hour + ' 时 · ' + b.posts + ' 条内容';
+        rect.appendChild(title);
+        svg.appendChild(rect);
+      } else {
+        // 空桶保留一个不可见的热区，鼠标悬停仍能读到「0 条」
+        const hit = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        hit.setAttribute('x', String(x));
+        hit.setAttribute('y', '0');
+        hit.setAttribute('width', String(bw));
+        hit.setAttribute('height', String(H));
+        hit.setAttribute('fill', 'transparent');
+        const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+        title.textContent = b.hour + ' 时 · 暂无内容';
+        hit.appendChild(title);
+        svg.appendChild(hit);
+      }
     });
     return svg;
   }

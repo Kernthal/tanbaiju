@@ -549,16 +549,39 @@ button.chip:active { transform: scale(.94); }
 
 /* ---------- 空状态 ---------- */
 
+/* ---------- 空态 ---------- */
+
 .empty {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 48px 20px;
+  justify-content: center;
+  gap: 12px;
+  /* 撑满剩余高度，让空态像「这里本该有内容」而不是「加载失败」 */
+  min-height: 340px;
+  padding: 56px 24px;
   text-align: center;
   color: var(--ink-3);
 }
-.empty-art { font-size: 36px; opacity: .3; font-weight: 700; }
+
+.empty-art {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 2px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ink-3);
+}
+.empty-art .hicon { color: var(--ink-3); }
+
+.empty-title { color: var(--ink-2); font-weight: 600; }
+
+/* 空态里的主行动按钮给点呼吸空间 */
+.empty .btn { margin-top: 6px; }
 
 /* ---------- 骨架屏 → 真实内容：淡出上移，不硬切 ---------- */
 

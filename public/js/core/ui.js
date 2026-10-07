@@ -5,6 +5,24 @@
 
 /* ---------- DOM ---------- */
 
+/**
+ * 应用行内样式。
+ * 关键：CSS 自定义属性（--xxx）不能用 Object.assign(node.style, ...)设置 ——
+ * 那样静默失效，头像的色相就会全部退回默认值（表现为一片空白圆圈）。
+ * 必须走 setProperty。
+ */
+function applyStyle(node, styles) {
+  Object.keys(styles).forEach((prop) => {
+    const value = styles[prop];
+    if (value === null || value === undefined || value === false) return;
+    if (prop.indexOf('--') === 0) {
+      node.style.setProperty(prop, String(value));
+    } else {
+      node.style[prop] = value;
+    }
+  });
+}
+
 function el(tag, attrs, children) {
   const node = document.createElement(tag);
   if (attrs) {
@@ -14,7 +32,7 @@ function el(tag, attrs, children) {
       if (k === 'class') node.className = v;
       else if (k === 'html') node.innerHTML = v;
       else if (k === 'text') node.textContent = v;
-      else if (k === 'style' && typeof v === 'object') Object.assign(node.style, v);
+      else if (k === 'style' && typeof v === 'object') applyStyle(node, v);
       else if (k.slice(0, 2) === 'on' && typeof v === 'function') node.addEventListener(k.slice(2), v);
       else if (k === 'dataset') Object.assign(node.dataset, v);
       else node.setAttribute(k, v === true ? '' : v);

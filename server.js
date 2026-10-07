@@ -1039,7 +1039,16 @@ function seed() {
   console.log('[seed] 已生成演示数据');
 }
 
-seed();
+/**
+ * 是否灌入演示数据。
+ * 正式使用时应当是空库 —— 首页会显示「还没有人创建坦白局」的引导态，
+ * 内容由真实用户产生。需要预览效果时用 node tools/restart.js --demo 显式开启。
+ */
+if (process.env.TANBAIJU_DEMO === '1' || process.argv.includes('--demo')) {
+  seed();
+} else if (db.rooms.count() === 0) {
+  console.log('[启动] 空库模式：首页将显示引导态（加 --demo 可载入演示数据）');
+}
 
 /* ============ 静态文件 ============ */
 

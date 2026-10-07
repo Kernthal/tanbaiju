@@ -145,10 +145,47 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: 18px;
-  align-items: start;
+  /* stretch 而非 start：主栏与侧栏一起撑满，
+     否则内容少时下方会留一大片死白，页面显得没做完。 */
+  align-items: stretch;
 }
 
-.side { position: sticky; top: calc(var(--header-h) + 18px); display: flex; flex-direction: column; gap: 12px; }
+/* 主栏最少占满一屏，空白由内容均匀分布而不是堆在底部 */
+.layout-desk > .col {
+  min-height: calc(100vh - var(--header-h) - 58px);
+}
+
+.side {
+  position: sticky;
+  top: calc(var(--header-h) + 18px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: calc(100vh - var(--header-h) - 36px);
+}
+/* 末尾的引导卡吸收剩余高度，但设上限，避免内容多时被拉得过长 */
+.side > .side-cta { flex: 1 1 auto; min-height: 168px; }
+
+/* 侧栏引导卡：吃掉剩余高度，让侧栏不悬空 */
+.side-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  justify-content: center;
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+}
+.side-cta-art {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 2px;
+  border-radius: var(--r-md);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
 
 /* ---------- 底部 tab（仅手机 <720px 显示） ---------- */
 
@@ -214,6 +251,25 @@
 .grid-2 { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .grid-3 { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
 .grid-4 { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+
+/* 卡片等高：同一行的坦白局卡片底部对齐，避免参差感 */
+.grid-2 > .room-card,
+.grid-3 > .room-card { height: 100%; }
+
+/* 卡片区吃掉主栏剩余高度。
+   卡片保持自然高度（不拉伸变形），多余空间用 align-content:start +
+   行间距吸收 —— 拉伸卡片会让内容挤在顶部，看起来更糟。 */
+.layout-desk > .col {
+  min-height: calc(100vh - var(--header-h) - 58px);
+  display: flex;
+  flex-direction: column;
+}
+.layout-desk > .col > .grid-2 {
+  flex: 1;
+  align-content: start;
+  grid-auto-rows: min-content;
+  row-gap: 14px;
+}
 
 /* ---------- 进场：淡入 + 轻微上移，每个错峰 35ms ---------- */
 
@@ -366,24 +422,44 @@
   box-shadow: inset 0 0 0 1px var(--line) !important;
 }
 
-/* ---------- 首页横幅：收成微信式一条信息条（覆盖 JS 内联写法） ---------- */
-
-#view > .layout-desk > .col.gap-16 > .room-hero:first-child {
-  padding: 13px 15px !important;
+/* ---------- 首页顶部信息条 ----------
+   微信式：白底 + 发丝边框，主色只做左侧一小条点缀。
+   之前这里靠超长选择器 + !important 压 JS 内联样式，很脆弱；
+   现在 JS 直接输出 .home-banner，样式与结构解耦。 */
+.home-banner {
+  position: relative;
+  overflow: hidden;
+  padding: 14px 16px 14px 18px;
+  background: var(--surface);
   border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
 }
-#view > .layout-desk > .col.gap-16 > .room-hero:first-child > .row > .col > div:first-child {
-  font-size: 17px !important;
-  font-weight: 700 !important;
-  letter-spacing: -.3px !important;
-  color: var(--ink-1) !important;
+
+/* 左侧 3px 品牌色竖条：小面积点缀，不铺满 */
+.home-banner::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--brand);
+}
+
+.home-banner-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -.3px;
   line-height: 1.35;
+  color: var(--ink-1);
 }
-#view > .layout-desk > .col.gap-16 > .room-hero:first-child > .row > .col > div:first-child + div {
-  font-size: 13px !important;
-  font-weight: 500 !important;
-  color: var(--ink-2) !important;
+
+.home-banner-sub {
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1.4;
+  color: var(--ink-2);
 }
 
 /* 数字统计块：数字放大加粗、标签弱化 */
@@ -757,7 +833,7 @@ button:focus-visible,
   .user-chip .nick { display: none; }
   .user-chip { padding: 0 4px; }
   /* 顶部信息条在窄屏竖排，按钮撑满一行 */
-  #view > .layout-desk > .col.gap-16 > .room-hero:first-child .btn { width: 100%; }
+  .home-banner .btn { width: 100%; }
 }
 
 @media (max-width: 400px) {

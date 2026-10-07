@@ -42,7 +42,11 @@ function cleanData() {
 killPort();
 if (process.argv.includes('--clean')) cleanData();
 
-const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+const args = path.join(__dirname, '..', 'server.js');
+const demo = process.argv.includes('--demo');
+const finalArgs = demo ? [args, '--demo'] : [args];
+
+const server = spawn(process.execPath, finalArgs, {
   cwd: path.join(__dirname, '..'),
   stdio: 'inherit',
   detached: false,
