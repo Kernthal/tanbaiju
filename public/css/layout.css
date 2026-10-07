@@ -654,6 +654,12 @@
   padding: 24px;
 }
 
+/* 登录态：隐藏顶栏与底部导航，但保留 DOM —— 登录成功跳回来时还要用。
+   之前直接 remove() 掉了，登录后顶栏永久消失、昵称不更新。 */
+.app.auth-mode .topbar,
+.app.auth-mode .tabbar { display: none; }
+.app.auth-mode #view { padding-top: 0; }
+
 .login-card {
   width: min(380px, 100%);
   padding: 30px 26px;
@@ -661,6 +667,105 @@
   border-radius: var(--r-xl);
   box-shadow: var(--sh-3);
   animation: popIn 300ms var(--ease-out) both;
+}
+
+/* ---------- 登录表单的层次 ---------- */
+/* 之前是一堆裸输入框 + 两个同权重按钮，看着像后台管理表单。
+   现在分三段：标题说明 / 字段区 / 主动作，切换入口降级为文字链。 */
+
+.auth-head { margin-bottom: 22px; }
+
+.auth-title {
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -.3px;
+  color: var(--ink-1);
+  line-height: 1.4;
+}
+
+.auth-sub {
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.auth-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+/* 注册时才需要的字段，用细分隔线隔开，避免表单突然变长 */
+.auth-divider {
+  height: 1px;
+  margin: 2px 0;
+  background: var(--line);
+}
+
+.field-hint {
+  margin-top: 5px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+/* 验证码：输入框占满，「获取验证码」收窄，不与输入框抢空间 */
+.auth-code-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+.auth-code-row .input { flex: 1; min-width: 0; }
+
+.auth-code-btn {
+  flex-shrink: 0;
+  min-width: 104px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.auth-code-btn:hover { background: var(--brand-soft); }
+.auth-code-btn:active { transform: scale(.97); }
+.auth-code-btn.loading { opacity: .6; pointer-events: none; }
+
+/* 切换入口：视觉权重明确低于主按钮 */
+.auth-switch {
+  display: block;
+  width: 100%;
+  margin-top: 14px;
+  padding: 6px;
+  background: none;
+  border: none;
+  color: var(--ink-2);
+  font-size: 13px;
+  text-align: center;
+  transition: color var(--dur-fast) var(--ease);
+}
+.auth-switch:hover { color: var(--brand); }
+
+.auth-tip {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+/* 扫码不可用时的兜底提示：说清原因 + 给替代方案 */
+.qr-failed {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  width: 100%;
+  padding: 22px 8px;
 }
 
 .qr-box {

@@ -280,8 +280,49 @@ async function evaluatePages() {
     check('获取房间 id', false);
   }
 
-  /* ---- 交互验证：真点击，而不是只看静态渲染 ---- */
+  /*---- 交互验证：真点击，而不是只看静态渲染 ---- */
   console.log('\n--- 交互（真实点击）---');
+
+  // 前置：确保有「带标签」的内容可点。
+// 空库（--clean 启动）时首页没有标签、没有推荐用户，
+// 那些交互用例就会因为「没东西可点」而失败——
+// 那是测试环境的问题，不是产品的问题，所以这里自己造数据。
+  const seeded = await evalJs(`(async function(){
+    var rooms = await fetch('/api/rooms').then(function(r){ return r.json(); });
+    // 已经有带标签的房间就够用了
+    var tagged = rooms.data.list.filter(function(r){ return (r.tags||[]).length > 0; });
+    if (tagged.length >= 1) return { ok: true, reused: true, rooms: rooms.data.list.length };
+
+    var did = 'guard-seed-' + Date.now();
+    async function post(p, b){
+      var res = await fetch(p, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-device-id': did },
+        body: JSON.stringify(b),
+        credentials: 'same-origin'
+      });
+      return res.json();
+    }
+    var r1 = await post('/api/rooms', {
+      title: '守卫测试局', subtitle: '交互验证用',
+      theme: 'mint', tags: ['生活', '成长'], days: 3,
+      rules: { onePerGuest: false, allowVoice: true }
+    });
+    if (!r1.ok) return { ok: false, why: r1.message };
+    await post('/api/rooms/' + r1.data.id + '/posts', { kind: 'question', text: '这是一条用于守卫测试的提问。' });
+
+    var r2 = await post('/api/rooms', {
+      title: '另一场守卫局', subtitle: '让广场不止一张卡',
+      theme: 'sky', tags: ['情绪'], days: 2,
+      rules: { onePerGuest: false, allowVoice: true }
+    });
+    if (r2.ok) {
+      await post('/api/rooms/' + r2.data.id + '/posts', { kind: 'question', text: '第二条守卫测试提问。' });
+    }
+    return { ok: true, reused: false };
+  })()`);
+  check('交互测试前置数据就绪', seeded.ok,
+    seeded.reused ? ('复用已有 ' + seeded.rooms + ' 场') : ('新建 2 场: ' + (seeded.why || 'ok')));
 
   // 1. 首页点标签应触发筛选
   await cmd('Page.navigate', { url: BASE + '/#/home' });
@@ -375,7 +416,91 @@ async function evaluatePages() {
   check('登录页切换通道后有输入控件', nickInput.inputs > 0,
     (nickInput.clicked ? '点击「' + nickInput.label + '」后 ' : '未找到切换按钮，') + nickInput.inputs + ' 个输入框');
 
-  // 5. 站内不得有指向绝对路径的可点链接（子路径部署必 404）
+  // 6. 真登录一次：注册 -> 拿到身份 -> 首页显示昵称。
+  //    只验证元素存在是不够的，必须验证整条链路真的通。
+  //    先显式回到登录页：上一步可能已切走通道。
+  await evalJs("location.hash = '#/login'; true");
+  await waitRendered();
+  // 诊断信息：确认到底停在哪一步，避免断言只说「找不到按钮」
+  const preflight = await evalJs(`(function(){
+    var v = document.getElementById('view');
+    return {
+      hash: String(location.hash),
+      hasView: !!v,
+      viewLen: v ? v.innerText.trim().length : -1,
+      buttons: v ? Array.prototype.slice.call(v.querySelectorAll('button'))
+        .map(function(b){ return (b.textContent||'').trim(); }) : [],
+    };
+  })()`);
+  const regFlow = await evalJs(`(async function(){
+    function btns(){
+      return Array.prototype.slice.call(document.querySelectorAll('#view button'));
+    }
+    // 注意：每次点击都会 renderMain() 重建 DOM，
+    // 所以每一步都必须重新查询，不能复用旧的节点引用。
+    function clickByText(t){
+      var b = btns().filter(function(x){ return (x.textContent||'').trim() === t; })[0];
+      if (b) b.click();
+      return !!b;
+    }
+    function setVal(input, v){
+      var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      setter.call(input, v);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    var wait = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
+
+    // 切到「账号」
+    if (!clickByText('账号')) return { ok: false, why: '找不到「账号」按钮' };
+    await wait(500);
+
+    // 点「去注册」进入注册态
+    if (!clickByText('还没有账号？去注册')) return { ok: false, why: '找不到去注册入口' };
+    await wait(500);
+
+    var inputs = document.querySelectorAll('#view input');
+    if (inputs.length < 3) return { ok: false, why: '注册表单输入框不足: ' + inputs.length };
+    var stamp = Date.now().toString().slice(-8);
+    setVal(inputs[0], 'ui' + stamp);
+    setVal(inputs[1], 'abc123456');
+    setVal(inputs[2], '界面测试员');
+
+    var submit = btns().filter(function(x){
+      return (x.textContent||'').indexOf('注册并登录') >= 0;
+    })[0];
+    if (!submit) {
+      return { ok: false, why: '找不到注册按钮，当前按钮: ' +
+        btns().map(function(b){ return (b.textContent||'').trim(); }).join(' / ') };
+    }
+    // 直接调 onclick，而不是 click()：
+    // CDP 的合成点击在部分环境下不触发异步处理器，
+    // 而这里要验证的正是「点了之后能不能走通」。
+    submit.onclick();
+
+    // 登录后顶栏昵称是异步刷新的（api.me() → paintUser()），
+    // 所以要多等几轮，不能一进首页就读。
+    for (var i = 0; i < 24; i++) {
+      await wait(250);
+      if ((location.hash||'').indexOf('#/home') === 0) {
+        var el = document.getElementById('userName');
+        if (el && el.textContent && el.textContent !== '登录') break;
+      }
+    }
+    var el2 = document.getElementById('userName');
+    return {
+      ok: (location.hash||'').indexOf('#/home') === 0,
+      hash: location.hash,
+      nick: el2 ? el2.textContent : ''
+    };
+  })()`);
+
+  check('账号注册可走通到首页', regFlow.ok,
+    regFlow.ok ? ('昵称=' + regFlow.nick)
+      : (regFlow.why + ' | 预检: hash=' + preflight.hash + ' view长度=' + preflight.viewLen +
+         ' 按钮=' + preflight.buttons.join('/')));
+  check('注册后顶栏显示新昵称', regFlow.nick === '界面测试员', regFlow.nick || '(空)');
+
+  // 站内不得有指向绝对路径的可点链接（子路径部署必 404）
   const badLinks = await evalJs(`(function(){
     var bad = [];
     var nodes = document.querySelectorAll('a[href]');

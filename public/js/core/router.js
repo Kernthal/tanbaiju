@@ -165,4 +165,7 @@ window.router = {
   parse: parseHash,
   autodiscover: autodiscover,
   routes: routes,
+  // 登录页要把自己摘掉、交还给路由时用
+  handleRoute: handleRoute,
+  started: () => booted,
 };

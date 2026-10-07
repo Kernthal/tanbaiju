@@ -600,7 +600,8 @@ async function resolveMentions(text) {
   while ((m = re.exec(String(text || ''))) !== null) names.push(m[1]);
   if (!names.length) return [];
   const all = await selectAll('users');
-  return names.map((n) => all.find((u) => u.nickname === n)).filter(Boolean);
+  return names.map((n) => all.filter((u) => u.nickname === n)
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0]).filter(Boolean);
 }
 
 on('POST', '/api/posts/:id/answer', async (params, body) => {

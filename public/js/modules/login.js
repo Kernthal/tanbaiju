@@ -27,20 +27,22 @@ window.viewLogin = async function viewLogin(host) {
 
   async function renderQr(box) {
     cleanup();
-    const inner = q('div', { class: 'col gap-16 center', style: { alignItems: 'center' } });
+    const inner = q('div', { class: 'col gap-14 center', style: { alignItems: 'center' } });
     // 只清自己的内容，不能动 box：
     // box 是整块面板，里面还有通道切换的按钮（扫码登录 / 手机号 / 账号），
     // 清空会把它们一起抹掉，导致用户无法切换登录方式。
     inner.innerHTML = '';
     box.appendChild(inner);
 
-    inner.appendChild(q('div', { class: 't-2' }, '扫码登录'));
-    inner.appendChild(q('div', { class: 't-sm c-3', text: '用微信扫一扫下方二维码' }));
+    inner.appendChild(q('div', { class: 'auth-head', style: { textAlign: 'center', marginBottom: '2px' } }, [
+      q('div', { class: 'auth-title', text: '扫码登录' }),
+      q('div', { class: 'auth-sub', text: '用微信或任意扫码 App 扫下方二维码' }),
+    ]));
 
     const qrBox = q('div', { class: 'qr-box' }, [q('div', { class: 't-sm c-3', text: '二维码生成中' })]);
     const status = q('div', { class: 'scan-hint' }, [
       q('div', { class: 'scan-line' }),
-      q('div', { text: '等待扫码…' }),
+      q('div', { class: 'scan-status', text: '正在申请票据…' }),
     ]);
     const refresh = q('button', { class: 'btn btn-ghost btn-sm', text: '刷新二维码' });
 
@@ -51,9 +53,11 @@ window.viewLogin = async function viewLogin(host) {
     try {
       const data = await api.qrTicket();
       currentTicket = data.ticket;
-      qrBox.innerHTML = data.svg;
+      // 二维码由自研编码器生成（lib/qr.js，前后端同一份实现）
+      qrBox.innerHTML = window.QRSvg ? window.QRSvg(data.url || ('#' + data.ticket)) : '';
       const statusText = status.lastChild;
       refresh.onclick = () => renderQr(box);
+      statusText.textContent = '等待扫码…';
 
       // 轮询票据状态
       pollTimer = setInterval(async () => {
@@ -64,10 +68,17 @@ window.viewLogin = async function viewLogin(host) {
             statusText.textContent = '登录成功，正在进入…';
             store.setMe(await api.me());
             ui.toast('登录成功', 'ok');
-            setTimeout(() => router.navigate('/home'), 500);
+            setTimeout(() => {
+              if (window.enterApp) window.enterApp('/home');
+              else router.navigate('/home');
+            }, 500);
           } else if (r.status === 'expired') {
             cleanup();
-            statusText.textContent = r.message;
+            statusText.textContent = '二维码已过期，请刷新';
+            refresh.textContent = '点击刷新';
+          } else if (r.status === 'invalid') {
+            cleanup();
+            statusText.textContent = '票据无效，请刷新二维码';
             refresh.textContent = '点击刷新';
           } else if (r.status === 'waiting') {
             statusText.textContent = '已扫描，请在手机上确认';
@@ -75,24 +86,37 @@ window.viewLogin = async function viewLogin(host) {
         } catch (_) { /* 网络抖动忽略，下轮重试 */ }
       }, 1800);
     } catch (err) {
+      // 拿不到票据就直说，不要留一个空框让人以为是自己手机的问题
       qrBox.innerHTML = '';
-      qrBox.appendChild(q('div', { class: 't-sm c-danger', text: err.message }));
+      qrBox.appendChild(q('div', { class: 'qr-failed' }, [
+        q('div', { class: 't-sm', style: { color: 'var(--ink-2)' }, text: '扫码登录当前不可用' }),
+        q('div', { class: 't-xs c-3 mt-4', style: { padding: '0 10px', lineHeight: '1.7' },
+          text: err.message === '接口不存在'
+            ? '当前部署环境没有服务端，无法签发票据。可改用手机号或账号登录。'
+            : err.message }),
+      ]));
+      refresh.style.display = 'none';
+      status.style.display = 'none';
     }
   }
 
   /* ---------- 手机号通道 ---------- */
 
   function renderPhone(box) {
-    const phone = q('input', { class: 'input', placeholder: '11 位手机号', maxlength: 11, inputmode: 'numeric' });
-    const code = q('input', { class: 'input', placeholder: '验证码', maxlength: 6, inputmode: 'numeric' });
-    const sendBtn = q('button', { class: 'btn btn-ghost', text: '获取验证码' });
+    const phone = q('input', {
+      class: 'input', placeholder: '11 位手机号', maxlength: 11, inputmode: 'numeric',
+      autocomplete: 'tel',
+    });
+    const code = q('input', {
+      class: 'input', placeholder: '6 位验证码', maxlength: 6, inputmode: 'numeric',
+      autocomplete: 'one-time-code',
+    });
+    const sendBtn = q('button', { class: 'auth-code-btn', text: '获取验证码' });
     const submit = q('button', { class: 'btn btn-primary btn-block btn-lg', text: '登录' });
-
-    code.style.flex = '1';
 
     sendBtn.onclick = async () => {
       const v = phone.value.trim();
-      if (!/^1\d{10}$/.test(v)) return ui.toast('请输入正确的手机号', 'err');
+      if (!/^1[3-9]\d{9}$/.test(v)) return ui.toast('请填写 11 位手机号', 'err');
       sendBtn.classList.add('loading');
       try {
         const r = await api.phoneCode(v);
@@ -105,13 +129,25 @@ window.viewLogin = async function viewLogin(host) {
       }
     };
 
+    // 回车提交；验证码框回车等同点登录
+    [phone, code].forEach((input) => {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') submit.click();
+      });
+    });
+
     submit.onclick = async () => {
+      const p = phone.value.trim();
+      const c = code.value.trim();
+      if (!/^1[3-9]\d{9}$/.test(p)) return ui.toast('请填写 11 位手机号', 'err');
+      if (!c) return ui.toast('请填写验证码', 'err');
+
       submit.classList.add('loading');
       try {
-        const r = await api.phoneLogin(phone.value.trim(), code.value.trim());
+        const r = await api.phoneLogin(p, c);
         store.setMe(r.user);
         ui.toast('登录成功', 'ok');
-        router.navigate('/home');
+        if (window.enterApp) window.enterApp('/home'); else router.navigate('/home');
       } catch (err) {
         ui.toast(err.message, 'err');
         submit.classList.remove('loading');
@@ -119,58 +155,114 @@ window.viewLogin = async function viewLogin(host) {
     };
 
     ui.render(box, [
-      q('div', { class: 't-2 mb-16', text: '手机号登录' }),
-      q('div', { class: 'field mb-12' }, [q('div', { class: 'field-label', text: '手机号' }), phone]),
-      q('div', { class: 'field mb-16' }, [q('div', { class: 'field-label', text: '验证码' }),
-        q('div', { class: 'row gap-8' }, [code, sendBtn])]),
+      q('div', { class: 'auth-head' }, [
+        q('div', { class: 'auth-title', text: '手机号登录' }),
+        q('div', { class: 'auth-sub', text: '未注册的手机号将自动创建账号' }),
+      ]),
+      q('div', { class: 'auth-fields' }, [
+        q('div', { class: 'field' }, [
+          q('label', { class: 'field-label', text: '手机号' }),
+          phone,
+        ]),
+        q('div', { class: 'field' }, [
+          q('label', { class: 'field-label', text: '验证码' }),
+          q('div', { class: 'auth-code-row' }, [code, sendBtn]),
+        ]),
+      ]),
       submit,
-      q('div', { class: 't-xs c-3 mt-12', text: '演示环境不接短信网关，验证码会在获取后自动填入。' }),
+      q('div', { class: 'auth-tip', text: '演示环境不会真的发短信，验证码固定为 8888' }),
     ]);
   }
 
   /* ---------- 账号通道 ---------- */
 
   function renderAccount(box) {
-    const isRegister = mode === 'account';
-    const username = q('input', { class: 'input', placeholder: '用户名（字母数字下划线）' });
-    const password = q('input', { class: 'input', type: 'password', placeholder: '密码（至少 6 位）' });
-    const nickname = q('input', { class: 'input', placeholder: '昵称（可选）' });
+    const isRegister = mode === 'register' || mode === 'account';
+    const wantRegister = mode === 'register';
+
+    const username = q('input', {
+      class: 'input', placeholder: '字母数字下划线，3-20 位',
+      autocomplete: 'username', maxlength: 20,
+    });
+    const password = q('input', {
+      class: 'input', type: 'password', placeholder: '至少 6 位',
+      autocomplete: wantRegister ? 'new-password' : 'current-password', maxlength: 64,
+    });
+    const nickname = q('input', {
+      class: 'input', placeholder: '别人看到的名字',
+      maxlength: 16,
+    });
+
     const submit = q('button', {
       class: 'btn btn-primary btn-block btn-lg',
-      text: isRegister ? '注册并登录' : '登录',
+      text: wantRegister ? '注册并登录' : '登录',
+    });
+
+    // 回车即提交，符合表单习惯
+    [username, password, nickname].forEach((input) => {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') submit.click();
+      });
     });
 
     submit.onclick = async () => {
+      const u = username.value.trim();
+      const p = password.value;
+      if (!u) return ui.toast('请填写用户名', 'err');
+      if (!p) return ui.toast('请填写密码', 'err');
+      if (wantRegister && !nickname.value.trim()) return ui.toast('请填一个昵称', 'err');
+
       submit.classList.add('loading');
       try {
-        const r = isRegister
-          ? await api.register(username.value.trim(), password.value, nickname.value.trim())
-          : await api.login(username.value.trim(), password.value);
+        const r = wantRegister
+          ? await api.register(u, p, nickname.value.trim())
+          : await api.login(u, p);
         store.setMe(r.user);
-        ui.toast(isRegister ? '注册成功' : '登录成功', 'ok');
-        router.navigate('/home');
+        ui.toast(wantRegister ? '注册成功，已自动登录' : '登录成功', 'ok');
+        if (window.enterApp) window.enterApp('/home'); else router.navigate('/home');
       } catch (err) {
         ui.toast(err.message, 'err');
         submit.classList.remove('loading');
       }
     };
 
-    const switcher = q('button', {
-      class: 'btn btn-soft btn-block mt-12',
-      text: isRegister ? '已有账号？去登录' : '没有账号？去注册',
-      onclick: () => {
-        mode = isRegister ? 'account' : 'register';
-        renderMain();
-      },
-    });
-
     ui.render(box, [
-      q('div', { class: 't-2 mb-16', text: isRegister ? '注册新账号' : '账号登录' }),
-      q('div', { class: 'field mb-12' }, [q('div', { class: 'field-label', text: '用户名' }), username]),
-      q('div', { class: 'field mb-12' }, [q('div', { class: 'field-label', text: '密码' }), password]),
-      isRegister ? q('div', { class: 'field mb-16' }, [q('div', { class: 'field-label', text: '昵称' }), nickname]) : null,
+      // 标题区：说清这一步在做什么
+      q('div', { class: 'auth-head' }, [
+        q('div', { class: 'auth-title', text: wantRegister ? '创建你的账号' : '欢迎回来' }),
+        q('div', { class: 'auth-sub', text: wantRegister
+          ? '起个用户名和昵称，下次直接登录'
+          : '登录后可以创建坦白局、收藏问题、收到回答通知' }),
+      ]),
+
+      // 凭据区：两个字段一组，用分隔线把「注册才需要」的部分隔开
+      q('div', { class: 'auth-fields' }, [
+        field('用户名', username),
+        field('密码', password),
+        wantRegister ? q('div', { class: 'auth-divider' }) : null,
+        wantRegister ? field('昵称', nickname, '别人看到的名字，可不填') : null,
+      ]),
+
       submit,
-      switcher,
+
+      // 切换入口：做成文字链，视觉权重低于主按钮
+      q('button', {
+        class: 'auth-switch',
+        text: wantRegister ? '已有账号？直接登录' : '还没有账号？去注册',
+        onclick: () => {
+          mode = wantRegister ? 'account' : 'register';
+          renderMain();
+        },
+      }),
+    ]);
+  }
+
+  /** 带标签的输入框 */
+  function field(label, input, hint) {
+    return q('div', { class: 'field' }, [
+      q('label', { class: 'field-label', text: label }),
+      input,
+      hint ? q('div', { class: 'field-hint', text: hint }) : null,
     ]);
   }
 
@@ -181,7 +273,7 @@ window.viewLogin = async function viewLogin(host) {
       const r = await api.guest();
       store.setMe(r.user);
       ui.toast('已以访客身份进入', 'ok');
-      router.navigate('/home');
+      if (window.enterApp) window.enterApp('/home'); else router.navigate('/home');
     } catch (err) {
       ui.toast(err.message, 'err');
     }
@@ -223,12 +315,17 @@ window.viewLogin = async function viewLogin(host) {
       seg.appendChild(btn);
     });
 
+    // 通道切换条与通道内容必须分属两个容器。
+    // 之前各通道直接往 panel 里 ui.render()，而 ui.render 会先清空容器，
+    // 于是每切一次通道就把切换条一起抹掉，用户再也换不回扫码/账号登录。
     panel.innerHTML = '';
+    const body = q('div');
     panel.appendChild(seg);
+    panel.appendChild(body);
 
-    if (mode === 'qr') renderQr(panel);
-    else if (mode === 'phone') renderPhone(panel);
-    else renderAccount(panel);
+    if (mode === 'qr') renderQr(body);
+    else if (mode === 'phone') renderPhone(body);
+    else renderAccount(body);
 
     // 演示辅助区：让没装微信的人也能完整体验扫码链路
     if (mode === 'qr') {

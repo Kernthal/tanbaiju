@@ -2,6 +2,38 @@
  * 启动引导：恢复主题、恢复登录态、注册路由、拉起未读数。
  */
 
+/**
+ * 把顶栏的用户信息画出来。
+ * 必须是模块级函数 —— enterApp 在 boot 之外，也要用它。
+ */
+function paintUser() {
+  const chipAvatar = document.getElementById('userAvatar');
+  const chipName = document.getElementById('userName');
+  if (!chipAvatar || !chipName || !store.me) return;
+  chipAvatar.innerHTML = '';
+  chipAvatar.appendChild(ui.avatar(store.me.avatar, 'avatar-sm', 'T'));
+  chipName.textContent = store.me.nickname;
+}
+
+/**
+ * 登录成功后把渲染权交回路由。
+ * 登录页是「接管模式」—— 它自己渲染 #view、给 .app 加 auth-mode 隐藏顶栏。
+ * 登录完成必须显式还回去，否则首页会一直停在登录页的内容上。
+ */
+window.enterApp = function enterApp(target) {
+  const app = document.querySelector('.app');
+  if (app) app.classList.remove('auth-mode');
+  const tabbar = document.querySelector('.tabbar');
+  if (tabbar) tabbar.style.display = '';
+
+  // 顶栏在登录期间被隐藏过，恢复后要重画一次当前用户
+  paintUser();
+
+  if (router.started && router.started()) router.handleRoute();
+  else router.start();
+  if (target) router.navigate(target);
+};
+
 (function boot() {
   const q = ui.el;
 
@@ -31,12 +63,13 @@
   }
 
   if (isLoginRoute()) {
-    // 只摘掉顶栏与底部 tabbar —— 不能删整个 .app，
-    // 因为 #view（页面挂载点）就在 .app 里面，删了就没有容器可渲染。
-    const topbar = document.querySelector('.topbar');
-    if (topbar) topbar.remove();
+    // 不要移除 .topbar —— 登录成功跳回首页时还要用。
+    // 登录页只隐藏顶栏内容，容器留着，跳回来时恢复即可。
+    // 之前直接 topbar.remove()，结果登录后顶栏永久消失、昵称不更新。
+    const app = document.querySelector('.app');
+    if (app) app.classList.add('auth-mode');
     const tabbar = document.querySelector('.tabbar');
-    if (tabbar) tabbar.remove();
+    if (tabbar) tabbar.style.display = 'none';
 
     const host = document.getElementById('view');
     if ((location.hash || '').indexOf('#/ticket') === 0) {
@@ -45,6 +78,15 @@
       viewLogin(host);
     }
     store.afterLogin = store.afterLogin || 'home';
+
+    // 登录页里切路由（如跳回首页）时恢复顶栏
+    const onHashChange = () => {
+      if (!isLoginRoute()) {
+        window.removeEventListener('hashchange', onHashChange);
+        enterApp();
+      }
+    };
+    window.addEventListener('hashchange', onHashChange);
     return;
   }
 
@@ -79,15 +121,6 @@
             .catch(function () { /* 保持未登录 */ });
         });
     });
-
-  function paintUser() {
-    const chipAvatar = document.getElementById('userAvatar');
-    const chipName = document.getElementById('userName');
-    if (!chipAvatar || !store.me) return;
-    chipAvatar.innerHTML = '';
-    chipAvatar.appendChild(ui.avatar(store.me.avatar, 'avatar-sm', 'T'));
-    chipName.textContent = store.me.nickname;
-  }
 
   async function refreshUnread() {
     if (!store.me) return;
